@@ -143,6 +143,10 @@ pub struct Config {
     #[dynamic(default)]
     pub window_frame: WindowFrameConfig,
 
+    /// Font to use for CharSelect
+    #[dynamic(default)]
+    pub char_select_font: Option<TextStyle>,
+
     #[dynamic(default = "default_char_select_font_size")]
     pub char_select_font_size: f64,
 
@@ -151,6 +155,10 @@ pub struct Config {
 
     #[dynamic(default = "default_char_select_bg_color")]
     pub char_select_bg_color: RgbaColor,
+
+    /// Font to use for ActivateCommandPalette
+    #[dynamic(default)]
+    pub command_palette_font: Option<TextStyle>,
 
     #[dynamic(default = "default_command_palette_font_size")]
     pub command_palette_font_size: f64,
@@ -161,6 +169,10 @@ pub struct Config {
 
     #[dynamic(default = "default_command_palette_bg_color")]
     pub command_palette_bg_color: RgbaColor,
+
+    /// Font to use for PaneSelect
+    #[dynamic(default)]
+    pub pane_select_font: Option<TextStyle>,
 
     #[dynamic(default = "default_pane_select_font_size")]
     pub pane_select_font_size: f64,
@@ -414,6 +426,9 @@ pub struct Config {
     #[dynamic(default)]
     pub disable_default_key_bindings: bool,
     pub leader: Option<LeaderKey>,
+
+    #[dynamic(default = "default_num_alphabet")]
+    pub launcher_alphabet: String,
 
     #[dynamic(default)]
     pub disable_default_quick_select_patterns: bool,
@@ -1811,6 +1826,11 @@ fn default_status_update_interval() -> u64 {
 
 fn default_alternate_buffer_wheel_scroll_speed() -> u8 {
     3
+}
+
+fn default_num_alphabet() -> String {
+    // Note: vi motion keys are intentionally excluded from this alphabet
+    "1234567890abcdefghilmnopqrstuvwxyz".to_string()
 }
 
 fn default_alphabet() -> String {

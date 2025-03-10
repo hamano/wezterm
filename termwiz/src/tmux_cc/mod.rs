@@ -25,6 +25,7 @@ pub struct Guarded {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
+    // Tmux generic events
     Begin {
         timestamp: i64,
         number: u64,
@@ -41,14 +42,54 @@ pub enum Event {
         flags: i64,
     },
     Guarded(Guarded),
-    Output {
+
+    // Tmux specific events
+    ClientDetached {
+        client_name: String,
+    },
+    ClientSessionChanged {
+        client_name: String,
+        session: TmuxSessionId,
+        session_name: String,
+    },
+    ConfigError {
+        error: String,
+    },
+    Continue {
+        pane: TmuxPaneId,
+    },
+    ExtendedOutput {
         pane: TmuxPaneId,
         text: String,
     },
     Exit {
         reason: Option<String>,
     },
-    SessionsChanged,
+    LayoutChange {
+        window: TmuxWindowId,
+        layout: String,
+        visible_layout: Option<String>,
+        raw_flags: Option<String>,
+    },
+    Message {
+        message: String,
+    },
+    Output {
+        pane: TmuxPaneId,
+        text: String,
+    },
+    PaneModeChanged {
+        pane: TmuxPaneId,
+    },
+    PasteBufferChanged {
+        buffer: String,
+    },
+    PasteBufferDeleted {
+        buffer: String,
+    },
+    Pause {
+        pane: TmuxPaneId,
+    },
     SessionChanged {
         session: TmuxSessionId,
         name: String,
@@ -56,20 +97,20 @@ pub enum Event {
     SessionRenamed {
         name: String,
     },
+    SessionsChanged,
     SessionWindowChanged {
         session: TmuxSessionId,
         window: TmuxWindowId,
     },
-    ClientSessionChanged {
-        client_name: String,
-        session: TmuxSessionId,
-        session_name: String,
+    SubscriptionChanged,
+    UnlinkedWindowAdd {
+        window: TmuxWindowId,
     },
-    ClientDetached {
-        client_name: String,
+    UnlinkedWindowClose {
+        window: TmuxWindowId,
     },
-    PaneModeChanged {
-        pane: TmuxPaneId,
+    UnlinkedWindowRenamed {
+        window: TmuxWindowId,
     },
     WindowAdd {
         window: TmuxWindowId,
@@ -84,12 +125,6 @@ pub enum Event {
     WindowRenamed {
         window: TmuxWindowId,
         name: String,
-    },
-    LayoutChange {
-        window: TmuxWindowId,
-        layout: String,
-        visible_layout: Option<String>,
-        raw_flags: Option<String>,
     },
 }
 
@@ -184,6 +219,7 @@ fn parse_line(line: &str) -> anyhow::Result<Event> {
     let mut pairs = parser::TmuxParser::parse(Rule::line_entire, line)?;
     let pair = pairs.next().ok_or_else(|| anyhow::anyhow!("no pairs!?"))?;
     match pair.as_rule() {
+        // Tmux generic rules
         Rule::begin => {
             let (timestamp, number, flags) = parse_guard(pair.into_inner())?;
             Ok(Event::Begin {
@@ -208,16 +244,190 @@ fn parse_line(line: &str) -> anyhow::Result<Event> {
                 flags,
             })
         }
+
+        // Tmux specific rules
+        Rule::client_detached => {
+            let mut pairs = pair.into_inner();
+            let client_name = unvis(
+                pairs
+                    .next()
+                    .ok_or_else(|| anyhow!("missing name"))?
+                    .as_str(),
+            )?;
+            Ok(Event::ClientDetached { client_name })
+        }
+        Rule::client_session_changed => {
+            let mut pairs = pair.into_inner();
+            let client_name = unvis(
+                pairs
+                    .next()
+                    .ok_or_else(|| anyhow!("missing name"))?
+                    .as_str(),
+            )?;
+            let session =
+                parse_session_id(pairs.next().ok_or_else(|| anyhow!("missing session id"))?)?;
+            let session_name = unvis(
+                pairs
+                    .next()
+                    .ok_or_else(|| anyhow!("missing session name"))?
+                    .as_str(),
+            )?;
+            Ok(Event::ClientSessionChanged {
+                client_name,
+                session,
+                session_name,
+            })
+        }
+        Rule::config_error => {
+            let mut pairs = pair.into_inner();
+            let error = unvis(
+                pairs
+                    .next()
+                    .ok_or_else(|| anyhow!("missing name"))?
+                    .as_str(),
+            )?;
+            Ok(Event::ConfigError { error })
+        }
+        Rule::r#continue => {
+            let mut pairs = pair.into_inner();
+            let pane = parse_pane_id(pairs.next().ok_or_else(|| anyhow!("missing pane id"))?)?;
+            Ok(Event::Continue { pane })
+        }
+        Rule::extended_output => {
+            let mut pairs = pair.into_inner();
+            let pane = parse_pane_id(pairs.next().ok_or_else(|| anyhow!("missing pane id"))?)?;
+            let text = unvis(
+                pairs
+                    .next()
+                    .ok_or_else(|| anyhow!("missing text"))?
+                    .as_str(),
+            )?;
+            Ok(Event::ExtendedOutput { pane, text })
+        }
         Rule::exit => {
             let mut pairs = pair.into_inner();
             let reason = pairs.next().map(|pair| pair.as_str().to_owned());
             Ok(Event::Exit { reason })
         }
-        Rule::sessions_changed => Ok(Event::SessionsChanged),
+        Rule::layout_change => {
+            let mut pairs = pair.into_inner();
+            let window =
+                parse_window_id(pairs.next().ok_or_else(|| anyhow!("missing window id"))?)?;
+            let layout = unvis(
+                pairs
+                    .next()
+                    .ok_or_else(|| anyhow!("missing layout"))?
+                    .as_str(),
+            )?;
+            let visible_layout = pairs.next().map(|pair| pair.as_str().to_owned());
+            let raw_flags = pairs.next().map(|r| r.as_str().to_owned());
+            Ok(Event::LayoutChange {
+                window,
+                layout,
+                visible_layout,
+                raw_flags,
+            })
+        }
+        Rule::message => {
+            let mut pairs = pair.into_inner();
+            let message = unvis(
+                pairs
+                    .next()
+                    .ok_or_else(|| anyhow!("missing text"))?
+                    .as_str(),
+            )?;
+            Ok(Event::Message { message })
+        }
+        Rule::output => {
+            let mut pairs = pair.into_inner();
+            let pane = parse_pane_id(pairs.next().ok_or_else(|| anyhow!("missing pane id"))?)?;
+            let text = unvis(
+                pairs
+                    .next()
+                    .ok_or_else(|| anyhow!("missing text"))?
+                    .as_str(),
+            )?;
+            Ok(Event::Output { pane, text })
+        }
         Rule::pane_mode_changed => {
             let mut pairs = pair.into_inner();
             let pane = parse_pane_id(pairs.next().ok_or_else(|| anyhow!("missing pane id"))?)?;
             Ok(Event::PaneModeChanged { pane })
+        }
+        Rule::paste_buffer_changed => {
+            let mut pairs = pair.into_inner();
+            let buffer = unvis(
+                pairs
+                    .next()
+                    .ok_or_else(|| anyhow!("missing text"))?
+                    .as_str(),
+            )?;
+            Ok(Event::PasteBufferChanged { buffer })
+        }
+        Rule::paste_buffer_deleted => {
+            let mut pairs = pair.into_inner();
+            let buffer = unvis(
+                pairs
+                    .next()
+                    .ok_or_else(|| anyhow!("missing text"))?
+                    .as_str(),
+            )?;
+            Ok(Event::PasteBufferDeleted { buffer })
+        }
+        Rule::pause => {
+            let mut pairs = pair.into_inner();
+            let pane = parse_pane_id(pairs.next().ok_or_else(|| anyhow!("missing pane id"))?)?;
+            Ok(Event::Pause { pane })
+        }
+        Rule::session_changed => {
+            let mut pairs = pair.into_inner();
+            let session =
+                parse_session_id(pairs.next().ok_or_else(|| anyhow!("missing session id"))?)?;
+            let name = unvis(
+                pairs
+                    .next()
+                    .ok_or_else(|| anyhow!("missing name"))?
+                    .as_str(),
+            )?;
+            Ok(Event::SessionChanged { session, name })
+        }
+        Rule::session_renamed => {
+            let mut pairs = pair.into_inner();
+            let name = unvis(
+                pairs
+                    .next()
+                    .ok_or_else(|| anyhow!("missing name"))?
+                    .as_str(),
+            )?;
+            Ok(Event::SessionRenamed { name })
+        }
+        Rule::session_window_changed => {
+            let mut pairs = pair.into_inner();
+            let session =
+                parse_session_id(pairs.next().ok_or_else(|| anyhow!("missing session id"))?)?;
+            let window =
+                parse_window_id(pairs.next().ok_or_else(|| anyhow!("missing window id"))?)?;
+            Ok(Event::SessionWindowChanged { session, window })
+        }
+        Rule::sessions_changed => Ok(Event::SessionsChanged),
+        Rule::subscription_changed => Ok(Event::SubscriptionChanged),
+        Rule::unlinked_window_add => {
+            let mut pairs = pair.into_inner();
+            let window =
+                parse_window_id(pairs.next().ok_or_else(|| anyhow!("missing window id"))?)?;
+            Ok(Event::UnlinkedWindowAdd { window })
+        }
+        Rule::unlinked_window_close => {
+            let mut pairs = pair.into_inner();
+            let window =
+                parse_window_id(pairs.next().ok_or_else(|| anyhow!("missing window id"))?)?;
+            Ok(Event::UnlinkedWindowClose { window })
+        }
+        Rule::unlinked_window_renamed => {
+            let mut pairs = pair.into_inner();
+            let window =
+                parse_window_id(pairs.next().ok_or_else(|| anyhow!("missing window id"))?)?;
+            Ok(Event::UnlinkedWindowRenamed { window })
         }
         Rule::window_add => {
             let mut pairs = pair.into_inner();
@@ -250,114 +460,22 @@ fn parse_line(line: &str) -> anyhow::Result<Event> {
             )?;
             Ok(Event::WindowRenamed { window, name })
         }
-        Rule::output => {
-            let mut pairs = pair.into_inner();
-            let pane = parse_pane_id(pairs.next().ok_or_else(|| anyhow!("missing pane id"))?)?;
-            let text = unvis(
-                pairs
-                    .next()
-                    .ok_or_else(|| anyhow!("missing text"))?
-                    .as_str(),
-            )?;
-            Ok(Event::Output { pane, text })
-        }
-        Rule::session_changed => {
-            let mut pairs = pair.into_inner();
-            let session =
-                parse_session_id(pairs.next().ok_or_else(|| anyhow!("missing session id"))?)?;
-            let name = unvis(
-                pairs
-                    .next()
-                    .ok_or_else(|| anyhow!("missing name"))?
-                    .as_str(),
-            )?;
-            Ok(Event::SessionChanged { session, name })
-        }
-        Rule::client_session_changed => {
-            let mut pairs = pair.into_inner();
-            let client_name = unvis(
-                pairs
-                    .next()
-                    .ok_or_else(|| anyhow!("missing name"))?
-                    .as_str(),
-            )?;
-            let session =
-                parse_session_id(pairs.next().ok_or_else(|| anyhow!("missing session id"))?)?;
-            let session_name = unvis(
-                pairs
-                    .next()
-                    .ok_or_else(|| anyhow!("missing session name"))?
-                    .as_str(),
-            )?;
-            Ok(Event::ClientSessionChanged {
-                client_name,
-                session,
-                session_name,
-            })
-        }
-        Rule::client_detached => {
-            let mut pairs = pair.into_inner();
-            let client_name = unvis(
-                pairs
-                    .next()
-                    .ok_or_else(|| anyhow!("missing name"))?
-                    .as_str(),
-            )?;
-            Ok(Event::ClientDetached { client_name })
-        }
-        Rule::session_renamed => {
-            let mut pairs = pair.into_inner();
-            let name = unvis(
-                pairs
-                    .next()
-                    .ok_or_else(|| anyhow!("missing name"))?
-                    .as_str(),
-            )?;
-            Ok(Event::SessionRenamed { name })
-        }
-        Rule::session_window_changed => {
-            let mut pairs = pair.into_inner();
-            let session =
-                parse_session_id(pairs.next().ok_or_else(|| anyhow!("missing session id"))?)?;
-            let window =
-                parse_window_id(pairs.next().ok_or_else(|| anyhow!("missing window id"))?)?;
-            Ok(Event::SessionWindowChanged { session, window })
-        }
-        Rule::layout_change => {
-            let mut pairs = pair.into_inner();
-            let window =
-                parse_window_id(pairs.next().ok_or_else(|| anyhow!("missing window id"))?)?;
-            let layout = unvis(
-                pairs
-                    .next()
-                    .ok_or_else(|| anyhow!("missing layout"))?
-                    .as_str(),
-            )?;
-            let visible_layout = pairs.next().map(|pair| pair.as_str().to_owned());
-            let raw_flags = pairs.next().map(|r| r.as_str().to_owned());
-            Ok(Event::LayoutChange {
-                window,
-                layout,
-                visible_layout,
-                raw_flags,
-            })
-        }
-        Rule::pane_id
-        | Rule::word
-        | Rule::client_name
-        | Rule::window_id
-        | Rule::session_id
-        | Rule::window_layout
+        Rule::EOI
         | Rule::any_text
-        | Rule::line
-        | Rule::line_entire
-        | Rule::EOI
-        | Rule::number
-        | Rule::layout_split_pane
+        | Rule::client_name
         | Rule::layout_pane
         | Rule::layout_split_horizontal
+        | Rule::layout_split_pane
         | Rule::layout_split_vertical
-        | Rule::layout_window => anyhow::bail!("Should not reach here"),
+        | Rule::layout_window
+        | Rule::line
+        | Rule::line_entire
+        | Rule::number
+        | Rule::pane_id
+        | Rule::session_id
+        | Rule::window_id
+        | Rule::window_layout
+        | Rule::word => anyhow::bail!("Should not reach here"),
     }
 }
 
@@ -617,35 +735,46 @@ fn parse_layout_inner(
                 stack.push(pane);
             }
             Rule::EOI
-            | Rule::number
-            | Rule::client_session_changed
             | Rule::any_text
-            | Rule::pane_id
-            | Rule::window_id
-            | Rule::word
-            | Rule::window_layout
-            | Rule::line_entire
-            | Rule::line
-            | Rule::session_id
-            | Rule::client_name
-            | Rule::client_detached
             | Rule::begin
+            | Rule::client_detached
+            | Rule::client_name
+            | Rule::client_session_changed
+            | Rule::config_error
+            | Rule::r#continue
             | Rule::end
             | Rule::error
             | Rule::exit
+            | Rule::extended_output
+            | Rule::layout_change
+            | Rule::layout_split_pane
+            | Rule::layout_window
+            | Rule::line
+            | Rule::line_entire
+            | Rule::message
+            | Rule::number
             | Rule::output
+            | Rule::pane_id
             | Rule::pane_mode_changed
+            | Rule::paste_buffer_changed
+            | Rule::paste_buffer_deleted
+            | Rule::pause
             | Rule::session_changed
+            | Rule::session_id
             | Rule::session_renamed
             | Rule::session_window_changed
             | Rule::sessions_changed
+            | Rule::subscription_changed
+            | Rule::unlinked_window_add
+            | Rule::unlinked_window_close
+            | Rule::unlinked_window_renamed
             | Rule::window_add
             | Rule::window_close
+            | Rule::window_id
+            | Rule::window_layout
             | Rule::window_pane_changed
             | Rule::window_renamed
-            | Rule::layout_split_pane
-            | Rule::layout_window
-            | Rule::layout_change => anyhow::bail!("Should not reach here"),
+            | Rule::word => anyhow::bail!("Should not reach here"),
         }
     }
 
@@ -869,6 +998,16 @@ here
 %output %1 \\033[K\\033[?2004h
 %exit
 %exit I said so
+%config-error /home/joe/.tmux.conf:1: unknown command: dadsafafasdf
+%continue %2
+%extended-output %1 \\033[1m\\033[7m%\\033[27m\\033[1m\\033[0m    \\015 \\015
+%message message text
+%unlinked-window-add @40
+%unlinked-window-renamed @41
+%paste-buffer-changed just something
+%paste-buffer-deleted just something else
+%pause %3
+%subscription-changed something we don't handle so far
 ";
 
         let mut p = Parser::new();
@@ -886,7 +1025,7 @@ here
                 }),
                 Event::WindowAdd { window: 1 },
                 Event::WindowClose { window: 38 },
-                Event::WindowClose { window: 39 },
+                Event::UnlinkedWindowClose { window: 39 },
                 Event::SessionsChanged,
                 Event::SessionChanged {
                     session: 1,
@@ -933,6 +1072,27 @@ here
                 Event::Exit {
                     reason: Some("I said so".to_owned())
                 },
+                Event::ConfigError {
+                    error: "/home/joe/.tmux.conf:1: unknown command: dadsafafasdf".to_owned()
+                },
+                Event::Continue { pane: 2 },
+                Event::ExtendedOutput {
+                    pane: 1,
+                    text: "\x1b[1m\x1b[7m%\x1b[27m\x1b[1m\x1b[0m    \r \r".to_owned()
+                },
+                Event::Message {
+                    message: "message text".to_owned()
+                },
+                Event::UnlinkedWindowAdd { window: 40 },
+                Event::UnlinkedWindowRenamed { window: 41 },
+                Event::PasteBufferChanged {
+                    buffer: "just something".to_owned()
+                },
+                Event::PasteBufferDeleted {
+                    buffer: "just something else".to_owned()
+                },
+                Event::Pause { pane: 3 },
+                Event::SubscriptionChanged,
             ],
             events
         );
