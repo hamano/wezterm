@@ -22,6 +22,7 @@ use wezterm_term::UnicodeVersion;
 
 mod background;
 mod bell;
+mod cell;
 mod color;
 mod config;
 mod daemon;
@@ -42,11 +43,11 @@ mod unix;
 mod version;
 pub mod window;
 mod wsl;
-mod cell;
 
 pub use crate::config::*;
 pub use background::*;
 pub use bell::*;
+pub use cell::*;
 pub use color::*;
 pub use daemon::*;
 pub use exec_domain::*;
@@ -61,7 +62,6 @@ pub use units::*;
 pub use unix::*;
 pub use version::*;
 pub use wsl::*;
-pub use cell::*;
 
 type ErrorCallback = fn(&str);
 

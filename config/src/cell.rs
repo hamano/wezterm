@@ -1,5 +1,4 @@
-use crate::Arc;
-use crate::HashMap;
+use crate::{Arc, HashMap};
 use wezterm_dynamic::{FromDynamic, ToDynamic};
 
 #[derive(Clone, Debug, Eq, PartialEq, FromDynamic, ToDynamic)]
@@ -10,7 +9,7 @@ pub struct CellWidth {
 }
 
 impl CellWidth {
-    pub fn compile_to_map(cellwidths: Option<Vec<Self>>) -> Option<Arc<HashMap<u32,u8>>> {
+    pub fn compile_to_map(cellwidths: Option<Vec<Self>>) -> Option<Arc<HashMap<u32, u8>>> {
         let cellwidths = cellwidths.as_ref()?;
         let mut map = HashMap::new();
         for cellwidth in cellwidths {

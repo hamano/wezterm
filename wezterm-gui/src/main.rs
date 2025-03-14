@@ -23,7 +23,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
-use termwiz::cell::{CellAttributes};
+use termwiz::cell::CellAttributes;
 use termwiz::surface::{Line, SEQ_ZERO};
 use unicode_normalization::UnicodeNormalization;
 use wezterm_bidi::Direction;

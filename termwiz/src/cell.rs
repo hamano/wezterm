@@ -8,11 +8,11 @@ use crate::widechar_width::WcWidth;
 use finl_unicode::grapheme_clusters::Graphemes;
 #[cfg(feature = "use_serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::mem;
 use std::sync::Arc;
 use wezterm_dynamic::{FromDynamic, ToDynamic};
-use std::collections::HashMap;
 
 #[cfg_attr(feature = "use_serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
@@ -923,7 +923,7 @@ impl UnicodeVersion {
     fn wcwidth(&self, c: char) -> usize {
         if let Some(ref cell_widths) = self.cell_widths {
             if let Some(width) = cell_widths.get(&(c as u32)) {
-                return (*width).into()
+                return (*width).into();
             }
         }
         self.width(WCWIDTH_TABLE.classify(c))
